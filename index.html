@@ -70,19 +70,14 @@
         #read-book-content::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
-        /* Style untuk tombol yang dinonaktifkan */
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
     </style>
 </head>
 <body class="bg-transparent text-gray-800">
 
     <div id="background-container"></div>
 
-    <!-- Indikator Loading Awal -->
-    <div id="loading-overlay" class="fixed inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center z-[101]">
+    <!-- Indikator Loading -->
+    <div id="loading-overlay" class="fixed inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center z-50">
         <div class="text-center">
             <svg class="animate-spin h-10 w-10 text-indigo-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
             <p class="mt-2 text-lg font-semibold text-gray-700">Menghubungkan ke server...</p>
@@ -125,6 +120,7 @@
              <div class="bg-white/70 form-container shadow-2xl rounded-2xl p-8">
                 <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Buat Akun Baru</h1>
                 <p class="text-center text-gray-600 mb-6">Pendaftaran memerlukan persetujuan admin.</p>
+                <div id="register-error-message" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md mb-4" role="alert"></div>
                 <form id="register-form">
                     <div class="mb-4">
                         <label for="reg-username" class="block text-gray-700 text-sm font-bold mb-2">Username</label>
@@ -248,16 +244,6 @@
             </div>
         </div>
     </div>
-    
-    <!-- Modal Notifikasi -->
-    <div id="notification-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
-        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm text-center">
-            <h3 id="notification-title" class="text-xl font-bold mb-4 text-gray-800"></h3>
-            <p id="notification-message" class="text-gray-600 mb-6"></p>
-            <button id="notification-close-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg">Tutup</button>
-        </div>
-    </div>
-
 
     <!-- Impor Firebase SDK -->
     <script type="module">
@@ -283,6 +269,7 @@
         const showLoginLink = document.getElementById('show-login-link');
         // Messages
         const loginErrorMessage = document.getElementById('login-error-message');
+        const registerErrorMessage = document.getElementById('register-error-message');
         const loginSuccessMessage = document.getElementById('login-success-message');
         // Library Page
         const logoutBtn = document.getElementById('logout-btn');
@@ -310,11 +297,6 @@
         const readBookTitle = document.getElementById('read-book-title');
         const readBookContent = document.getElementById('read-book-content');
         const closeReadBtn = document.getElementById('close-read-btn');
-        // Notification Modal
-        const notificationModal = document.getElementById('notification-modal');
-        const notificationTitle = document.getElementById('notification-title');
-        const notificationMessage = document.getElementById('notification-message');
-        const notificationCloseBtn = document.getElementById('notification-close-btn');
 
         // --- STATE LOKAL (disinkronkan dari Firebase) ---
         let localUsers = {};
@@ -415,15 +397,7 @@
 
         const getAppId = () => typeof __app_id !== 'undefined' ? __app_id : 'elibrary-dev';
 
-        // --- FUNGSI BANTU & TAMPILAN ---
-        const showNotification = (title, message, isError = false) => {
-            notificationTitle.textContent = title;
-            notificationMessage.textContent = message;
-            notificationTitle.classList.toggle('text-red-600', isError);
-            notificationTitle.classList.toggle('text-gray-800', !isError);
-            notificationModal.classList.remove('hidden');
-        };
-        
+        // --- FUNGSI TAMPILAN ---
         const showPage = (pageId) => {
             document.querySelectorAll('.page').forEach(page => page.classList.add('hidden'));
             document.getElementById(pageId)?.classList.remove('hidden');
@@ -534,10 +508,6 @@
         // --- FUNGSI LOGIKA APLIKASI ---
         const handleLogin = (e) => {
             e.preventDefault();
-            const submitBtn = e.target.querySelector('button[type="submit"]');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Logging in...';
-
             const username = loginForm.username.value.trim();
             const password = loginForm.password.value;
             loginErrorMessage.classList.add('hidden');
@@ -554,11 +524,13 @@
                     if (currentUser.role === 'admin') {
                         adminPanel.classList.remove('hidden');
                         if (currentUser.username === MAIN_ADMIN) {
+                            // Admin Utama melihat semuanya
                             approvalPanel.classList.remove('hidden');
                             userManagementPanel.classList.remove('hidden');
                             renderApprovalList();
                             renderUserList();
                         } else {
+                            // Admin lain hanya melihat tambah buku & tema
                             approvalPanel.classList.add('hidden');
                             userManagementPanel.classList.add('hidden');
                         }
@@ -568,44 +540,34 @@
                     
                     renderBooks();
                     showPage('library-page');
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Login';
                 }, 1000);
             } else {
                 loginErrorMessage.textContent = 'Username atau password salah.';
                 loginErrorMessage.classList.remove('hidden');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Login';
             }
         };
 
         const handleRegister = async (e) => {
             e.preventDefault();
-            const submitBtn = e.target.querySelector('button[type="submit"]');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Mendaftar...';
-
             const username = registerForm['reg-username'].value.trim();
             const password = registerForm['reg-password'].value;
+            registerErrorMessage.classList.add('hidden');
 
             if (localUsers[username] || localPending.some(p => p.username === username)) {
-                showNotification('Registrasi Gagal', 'Username sudah ada atau sedang menunggu persetujuan.', true);
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Daftar';
+                registerErrorMessage.textContent = 'Username sudah ada atau sedang menunggu persetujuan.';
+                registerErrorMessage.classList.remove('hidden');
                 return;
             }
             try {
                 const pendingRef = collection(db, `artifacts/${getAppId()}/public/data/pendingRegistrations`);
                 await addDoc(pendingRef, { username, password });
-                showNotification('Pendaftaran Berhasil', 'Akun Anda akan aktif setelah disetujui oleh admin.');
+                alert('Pendaftaran berhasil! Akun Anda akan aktif setelah disetujui oleh admin.');
                 registerForm.reset();
                 showPage('login-page');
             } catch (error) {
                 console.error("Error saat registrasi:", error);
-                showNotification('Registrasi Gagal', `Terjadi kesalahan: ${error.message}`, true);
-            } finally {
-                 submitBtn.disabled = false;
-                 submitBtn.textContent = 'Daftar';
+                registerErrorMessage.textContent = `Terjadi kesalahan: ${error.message}`;
+                registerErrorMessage.classList.remove('hidden');
             }
         };
 
@@ -622,10 +584,6 @@
 
         const handleAddBook = async (e) => {
             e.preventDefault();
-            const submitBtn = e.target.querySelector('button[type="submit"]');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Menambahkan...';
-
             const title = addBookForm['new-book-title'].value;
             const author = addBookForm['new-book-author'].value;
             let coverUrl = addBookForm['new-book-cover-url'].value;
@@ -636,9 +594,7 @@
                     coverUrl = await fileToDataUrl(coverFile);
                 } catch (error) {
                     console.error("Gagal membaca file cover:", error);
-                    showNotification('Operasi Gagal', 'Gagal memproses file gambar.', true);
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Tambah Buku';
+                    alert("Gagal mengunggah file cover.");
                     return;
                 }
             } else if (!coverUrl) {
@@ -648,34 +604,22 @@
             try {
                 const bookRef = collection(db, `artifacts/${getAppId()}/public/data/books`);
                 await addDoc(bookRef, { title, author, cover: coverUrl, borrowedBy: null, content: "" });
-                showNotification('Berhasil', 'Buku baru telah ditambahkan.');
                 addBookForm.reset();
             } catch (error) {
                  console.error("Error menambah buku:", error);
-                 showNotification('Operasi Gagal', `Gagal menambah buku: ${error.message}`, true);
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Tambah Buku';
+                 alert(`Gagal menambah buku: ${error.message}`);
             }
         };
 
         const handleApprovalAction = async (e) => {
-            const approveBtn = e.target.closest('.approve-btn');
-            const rejectBtn = e.target.closest('.reject-btn');
-            
-            if (!approveBtn && !rejectBtn) return;
-
-            const button = approveBtn || rejectBtn;
-            const parentDiv = button.parentElement;
-            parentDiv.querySelectorAll('button').forEach(btn => btn.disabled = true);
-            
-            const reqId = button.dataset.id;
+            if (!e.target.dataset.id) return;
+            const reqId = e.target.dataset.id;
             
             try {
                 const pendingDocRef = doc(db, `artifacts/${getAppId()}/public/data/pendingRegistrations`, reqId);
 
-                if (approveBtn) {
-                    const { username, password } = approveBtn.dataset;
+                if (e.target.classList.contains('approve-btn')) {
+                    const { username, password } = e.target.dataset;
                     const userDocRef = doc(db, `artifacts/${getAppId()}/public/data/users`, username);
                     await setDoc(userDocRef, { password, role: 'user' });
                 }
@@ -683,64 +627,56 @@
                 await deleteDoc(pendingDocRef);
             } catch (error) {
                 console.error("Error aksi persetujuan:", error);
-                showNotification('Operasi Gagal', `Terjadi kesalahan: ${error.message}`, true);
-                parentDiv.querySelectorAll('button').forEach(btn => btn.disabled = false);
+                alert(`Terjadi kesalahan: ${error.message}`);
             }
         };
 
         const handleUserAction = async (e) => {
-            const button = e.target.closest('.promote-btn, .demote-btn, .kick-btn');
-            if (!button) return;
-
-            const username = button.dataset.username;
+            const username = e.target.dataset.username;
             if (!username) return;
-            
-            const parentDiv = button.parentElement;
-            parentDiv.querySelectorAll('button').forEach(btn => btn.disabled = true);
             
             try {
                 const userDocRef = doc(db, `artifacts/${getAppId()}/public/data/users`, username);
-                if (button.classList.contains('promote-btn')) {
+                if (e.target.classList.contains('promote-btn')) {
                     await updateDoc(userDocRef, { role: 'admin' });
-                } else if (button.classList.contains('demote-btn')) {
+                } else if (e.target.classList.contains('demote-btn')) {
                     await updateDoc(userDocRef, { role: 'user' });
-                } else if (button.classList.contains('kick-btn')) {
+                } else if (e.target.classList.contains('kick-btn')) {
+                    // Cek buku yang dipinjam pengguna
                     const booksBorrowedByUser = localBooks.filter(book => book.borrowedBy === username);
                     const batch = writeBatch(db);
                     
+                    // Kembalikan semua buku yang dipinjam
                     booksBorrowedByUser.forEach(book => {
                         const bookDocRef = doc(db, `artifacts/${getAppId()}/public/data/books`, book.id);
                         batch.update(bookDocRef, { borrowedBy: null });
                     });
                     
+                    // Hapus pengguna
                     batch.delete(userDocRef);
+
                     await batch.commit();
                 }
             } catch (error) {
                 console.error("Error aksi pengguna:", error);
-                showNotification('Operasi Gagal', `Terjadi kesalahan: ${error.message}`, true);
-                parentDiv.querySelectorAll('button').forEach(btn => btn.disabled = false);
+                alert(`Terjadi kesalahan: ${error.message}`);
             }
         };
 
         const handleBookAction = async (e) => {
-            const button = e.target.closest('.delete-btn, .borrow-btn, .return-btn, .edit-btn, .read-btn');
-            if (!button) return;
-
-            const bookId = button.dataset.id;
+            const bookId = e.target.dataset.id;
             if (!bookId) return;
             
             const bookDocRef = doc(db, `artifacts/${getAppId()}/public/data/books`, bookId);
-            button.disabled = true;
 
             try {
-                if (button.classList.contains('delete-btn')) {
+                if (e.target.classList.contains('delete-btn')) {
                     await deleteDoc(bookDocRef);
-                } else if (button.classList.contains('borrow-btn')) {
+                } else if (e.target.classList.contains('borrow-btn')) {
                     await updateDoc(bookDocRef, { borrowedBy: currentUser.username });
-                } else if (button.classList.contains('return-btn')) {
+                } else if (e.target.classList.contains('return-btn')) {
                     await updateDoc(bookDocRef, { borrowedBy: null });
-                } else if (button.classList.contains('edit-btn')) {
+                } else if (e.target.classList.contains('edit-btn')) {
                     const book = localBooks.find(b => b.id === bookId);
                     if (book) {
                         editBookIdInput.value = book.id;
@@ -750,7 +686,7 @@
                         editBookCoverFileInput.value = '';
                         editBookModal.classList.remove('hidden');
                     }
-                } else if (button.classList.contains('read-btn')) {
+                } else if (e.target.classList.contains('read-btn')) {
                     const book = localBooks.find(b => b.id === bookId);
                      if (book) {
                         readBookTitle.textContent = book.title;
@@ -760,11 +696,7 @@
                 }
             } catch (error) {
                 console.error("Error aksi buku:", error);
-                showNotification('Operasi Gagal', `Terjadi kesalahan: ${error.message}`, true);
-            } finally {
-                if(document.body.contains(button)) { // Cek jika tombol masih ada di DOM
-                  button.disabled = false;
-                }
+                alert(`Terjadi kesalahan: ${error.message}`);
             }
         };
 
@@ -776,17 +708,13 @@
                     await setDoc(themeDocRef, { name: newTheme });
                 } catch(error) {
                     console.error("Gagal mengubah tema:", error);
-                    showNotification('Operasi Gagal', 'Gagal menyimpan preferensi tema.', true);
+                    alert("Gagal menyimpan preferensi tema.");
                 }
             }
         };
 
         const handleEditBookSubmit = async (e) => {
             e.preventDefault();
-            const submitBtn = e.target.querySelector('button[type="submit"]');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Menyimpan...';
-
             const bookId = editBookIdInput.value;
             const title = editBookTitleInput.value;
             const content = editBookContentInput.value;
@@ -800,9 +728,7 @@
                     updates.cover = await fileToDataUrl(coverFile);
                 } catch (error) {
                     console.error("Gagal membaca file cover:", error);
-                    showNotification('Operasi Gagal', 'Gagal memproses file gambar.', true);
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Simpan Perubahan';
+                    alert("Gagal mengunggah file cover.");
                     return;
                 }
             } else if (coverUrl) {
@@ -813,13 +739,9 @@
                 const bookDocRef = doc(db, `artifacts/${getAppId()}/public/data/books`, bookId);
                 await updateDoc(bookDocRef, updates);
                 editBookModal.classList.add('hidden');
-                showNotification('Berhasil', 'Perubahan buku telah disimpan.');
             } catch (error) {
                 console.error("Gagal menyimpan perubahan buku:", error);
-                showNotification('Operasi Gagal', 'Gagal menyimpan perubahan.', true);
-            } finally {
-                 submitBtn.disabled = false;
-                 submitBtn.textContent = 'Simpan Perubahan';
+                alert("Gagal menyimpan perubahan.");
             }
         };
 
@@ -838,7 +760,6 @@
         editBookForm.addEventListener('submit', handleEditBookSubmit);
         cancelEditBtn.addEventListener('click', () => editBookModal.classList.add('hidden'));
         closeReadBtn.addEventListener('click', () => readBookModal.classList.add('hidden'));
-        notificationCloseBtn.addEventListener('click', () => notificationModal.classList.add('hidden'));
 
     </script>
 </body>
